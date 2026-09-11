@@ -12,7 +12,7 @@ that every component already exists.
 
 Expected ownership includes:
 
-- process entry points, windows, surfaces, and application lifecycle;
+- process entry points, native windows/targets, and application lifecycle;
 - native time and input collection;
 - filesystem, storage, networking, loading, audio, and video implementations;
 - native diagnostic sinks;
@@ -22,7 +22,7 @@ Expected ownership includes:
 ## Non-scope
 
 `fluxel-host` does not define rendering semantics, GPU resource management,
-RenderGraph behavior, or the public cross-platform language SDK. It consumes
+RenderGraph behavior, renderer `Surface`/swapchain ownership, or the public cross-platform language SDK. It consumes
 the rendering library and supplies native capabilities around it. Browser and
 mini-game adapters, along with their developer-facing JavaScript API, belong to
 `fluxel-jsbridge`, not to this repository.
@@ -39,6 +39,10 @@ renderer.
 
 This repository records the native-host ownership boundary ahead of the Windows
 playable-runtime work; it does not claim completed EXE, APK/AAB, or IPA support.
+The current Stage 1.1 slice provides only a Windows `Window` primitive: fixed
+non-zero client extent, non-blocking message pump, close observation, explicit
+RAII destruction, and `raw-window-handle` 0.6 interoperability. It deliberately
+does not yet create a complete host runtime or a playable application.
 The authoritative sequence, target evidence, and cross-repository contracts are
 maintained in the [Fluxel roadmap](https://github.com/fluxel-project/.github/blob/main/ROADMAP.md)
 and [ecosystem architecture](https://github.com/fluxel-project/.github/blob/main/ECOSYSTEM_ARCHITECTURE.md).
