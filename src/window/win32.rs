@@ -4,7 +4,12 @@
 //! teardown, and HWND destruction stay outside the callback so a renderer can
 //! first stop its frame loop and retire its accepted work.
 
-use core::{cell::Cell, ffi::c_void, marker::PhantomData, num::NonZeroIsize};
+use core::{
+    cell::{Cell, RefCell},
+    ffi::c_void,
+    marker::PhantomData,
+    num::NonZeroIsize,
+};
 use std::{rc::Rc, sync::OnceLock};
 
 use raw_window_handle::{
@@ -18,15 +23,15 @@ use windows::{
         UI::WindowsAndMessaging::{
             AdjustWindowRectEx, CREATESTRUCTW, CS_HREDRAW, CS_VREDRAW, CreateWindowExW,
             DefWindowProcW, DestroyWindow, DispatchMessageW, GWLP_USERDATA, IDC_ARROW, LoadCursorW,
-            MSG, PM_REMOVE, PeekMessageW, RegisterClassW, SW_SHOW, ShowWindow, TranslateMessage,
-            WINDOW_EX_STYLE, WM_CLOSE, WM_DESTROY, WM_NCCREATE, WM_NCDESTROY, WNDCLASSW,
-            WS_OVERLAPPEDWINDOW,
+            MSG, PM_REMOVE, PeekMessageW, RegisterClassW, SIZE_MINIMIZED, SIZE_RESTORED, SW_SHOW,
+            ShowWindow, TranslateMessage, WINDOW_EX_STYLE, WM_CLOSE, WM_DESTROY, WM_NCCREATE,
+            WM_NCDESTROY, WM_SIZE, WNDCLASSW, WS_OVERLAPPEDWINDOW,
         },
     },
     core::PCWSTR,
 };
 
-use super::{WindowConfig, WindowError};
+use super::{WindowConfig, WindowError, WindowEvent};
 
 const CLASS_NAME: &[u16] = &[
     b'F' as u16,
@@ -64,6 +69,8 @@ struct WindowState {
     hwnd: Cell<Option<HWND>>,
     hinstance: HINSTANCE,
     close_requested: Cell<bool>,
+    minimized: Cell<bool>,
+    events: RefCell<Vec<WindowEvent>>,
 }
 
 impl WindowState {
@@ -71,9 +78,48 @@ impl WindowState {
         self.close_requested.set(true);
     }
 
+    /// Records the first terminal close transition exactly once. `WM_CLOSE`,
+    /// externally initiated `WM_DESTROY`, and the final `WM_NCDESTROY` may all
+    /// occur for one HWND; callers need one ordered terminal event, not three.
+    fn request_close_event(&self) {
+        if !self.close_requested.replace(true) {
+            self.push_event(WindowEvent::CloseRequested);
+        }
+    }
+
+    fn push_event(&self, event: WindowEvent) {
+        self.events.borrow_mut().push(event);
+    }
+
+    fn take_events(&self) -> Vec<WindowEvent> {
+        core::mem::take(&mut *self.events.borrow_mut())
+    }
+
+    /// Converts one `WM_SIZE` into the host-level transition. Win32 uses
+    /// `SIZE_RESTORED` for ordinary drag-resizes too, so only a preceding
+    /// `SIZE_MINIMIZED` makes it a semantic restore.
+    fn size_event(&self, wparam: WPARAM, lparam: LPARAM) -> WindowEvent {
+        let packed = lparam.0 as usize;
+        let width = (packed & 0xffff) as u32;
+        let height = ((packed >> 16) & 0xffff) as u32;
+        match wparam.0 as u32 {
+            SIZE_MINIMIZED => {
+                self.minimized.set(true);
+                WindowEvent::Minimized
+            }
+            SIZE_RESTORED if self.minimized.replace(false) => {
+                WindowEvent::Restored { width, height }
+            }
+            _ => {
+                self.minimized.set(false);
+                WindowEvent::Resized { width, height }
+            }
+        }
+    }
+
     /// Records terminal native destruction before the owning `Box` may be dropped.
     fn native_destroyed(&self) {
-        self.request_close();
+        self.request_close_event();
         self.hwnd.set(None);
     }
 }
@@ -89,6 +135,8 @@ impl Window {
             hwnd: Cell::new(None),
             hinstance,
             close_requested: Cell::new(false),
+            minimized: Cell::new(false),
+            events: RefCell::new(Vec::new()),
         });
         let mut rect = RECT {
             left: 0,
@@ -128,8 +176,13 @@ impl Window {
         })
     }
 
-    /// Dispatches all messages already queued for this thread without blocking.
-    pub fn poll_events(&self) -> Result<(), WindowError> {
+    /// Dispatches queued messages and returns this window's events in Win32
+    /// dispatch order.
+    ///
+    /// The returned sizes are client pixels and may be zero. The event stream
+    /// reports platform facts only; a renderer decides whether a zero-sized
+    /// target is suspended and owns all surface recreation.
+    pub fn poll_events(&self) -> Result<Vec<WindowEvent>, WindowError> {
         let mut message = MSG::default();
         // SAFETY: `message` is valid writable storage; null HWND selects this
         // thread's queue, which is precisely this window primitive's contract.
@@ -140,7 +193,7 @@ impl Window {
                 DispatchMessageW(&message);
             }
         }
-        Ok(())
+        Ok(self.state.take_events())
     }
 
     /// Returns whether `WM_CLOSE` or `WM_DESTROY` has stopped future frames.
@@ -235,7 +288,7 @@ unsafe extern "system" fn window_proc(
     match message {
         WM_CLOSE => {
             if let Some(state) = state {
-                state.request_close();
+                state.request_close_event();
             }
             // The application owns the shutdown sequence: stop rendering,
             // retire its surface/GPU work, then explicitly call `Window::close`.
@@ -243,7 +296,13 @@ unsafe extern "system" fn window_proc(
         }
         WM_DESTROY => {
             if let Some(state) = state {
-                state.request_close();
+                state.request_close_event();
+            }
+            LRESULT(0)
+        }
+        WM_SIZE => {
+            if let Some(state) = state {
+                state.push_event(state.size_event(wparam, lparam));
             }
             LRESULT(0)
         }
@@ -287,7 +346,9 @@ mod tests {
             );
             assert!(window.window_handle().is_ok());
             assert!(window.display_handle().is_ok());
-            window.poll_events().unwrap();
+            // Showing a newly-created Win32 window may itself enqueue an
+            // initial size notification; it is a real platform event.
+            let _ = window.poll_events().unwrap();
             let mut window = match Arc::try_unwrap(window) {
                 Ok(window) => window,
                 Err(_) => unreachable!("the test holds the only Arc"),
@@ -303,6 +364,8 @@ mod tests {
             hwnd: Cell::new(Some(HWND(std::ptr::dangling_mut()))),
             hinstance: HINSTANCE(std::ptr::null_mut()),
             close_requested: Cell::new(false),
+            minimized: Cell::new(false),
+            events: RefCell::new(Vec::new()),
         };
 
         state.request_close();
@@ -317,13 +380,26 @@ mod tests {
             hwnd: Cell::new(Some(HWND(std::ptr::dangling_mut()))),
             hinstance: HINSTANCE(std::ptr::null_mut()),
             close_requested: Cell::new(false),
+            minimized: Cell::new(false),
+            events: RefCell::new(Vec::new()),
         };
 
+        state.push_event(state.size_event(WPARAM(2), LPARAM((240_isize << 16) | 320)));
         state.native_destroyed();
         state.request_close();
 
         assert!(state.close_requested.get());
         assert_eq!(state.hwnd.get(), None);
+        assert_eq!(
+            state.take_events(),
+            vec![
+                WindowEvent::Resized {
+                    width: 320,
+                    height: 240,
+                },
+                WindowEvent::CloseRequested,
+            ]
+        );
     }
 
     #[test]
@@ -332,9 +408,15 @@ mod tests {
             Window::new(WindowConfig::new("fluxel-host lifecycle", 320, 240).unwrap()).unwrap();
         let hwnd = window.state.hwnd.get().unwrap();
 
+        // Isolate the subsequently posted close from the creation/show event.
+        let _ = window.poll_events().unwrap();
+
         // SAFETY: `hwnd` is owned by this test's window on the current thread.
         unsafe { PostMessageW(Some(hwnd), WM_CLOSE, WPARAM(0), LPARAM(0)) }.unwrap();
-        window.poll_events().unwrap();
+        assert_eq!(
+            window.poll_events().unwrap(),
+            vec![WindowEvent::CloseRequested]
+        );
 
         assert!(window.close_requested());
         assert!(window.window_handle().is_ok());
@@ -345,5 +427,118 @@ mod tests {
             Err(HandleError::Unavailable)
         ));
         window.close().unwrap();
+    }
+
+    #[test]
+    fn ordered_size_events_preserve_resize_minimize_restore_and_zero_extent() {
+        let state = WindowState {
+            hwnd: Cell::new(None),
+            hinstance: HINSTANCE(std::ptr::null_mut()),
+            close_requested: Cell::new(false),
+            minimized: Cell::new(false),
+            events: RefCell::new(Vec::new()),
+        };
+
+        // Win32 reports ordinary drag-resizes as SIZE_RESTORED too; without a
+        // preceding minimize they remain ordinary Resized events.
+        state.push_event(state.size_event(
+            WPARAM(SIZE_RESTORED as usize),
+            LPARAM((480_isize << 16) | 640),
+        ));
+        state.push_event(state.size_event(WPARAM(SIZE_MINIMIZED as usize), LPARAM(0)));
+        state.push_event(state.size_event(WPARAM(SIZE_RESTORED as usize), LPARAM(0)));
+        state.push_event(state.size_event(WPARAM(2), LPARAM((720_isize << 16) | 1280)));
+
+        assert_eq!(
+            state.take_events(),
+            vec![
+                WindowEvent::Resized {
+                    width: 640,
+                    height: 480,
+                },
+                WindowEvent::Minimized,
+                WindowEvent::Restored {
+                    width: 0,
+                    height: 0,
+                },
+                WindowEvent::Resized {
+                    width: 1280,
+                    height: 720,
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn queued_win32_messages_emit_events_in_dispatch_order() {
+        let mut window =
+            Window::new(WindowConfig::new("fluxel-host events", 320, 240).unwrap()).unwrap();
+        let hwnd = window.state.hwnd.get().unwrap();
+        let resize = LPARAM((240_isize << 16) | 320);
+
+        // Isolate explicit messages from the creation/show notification.
+        let _ = window.poll_events().unwrap();
+
+        // SAFETY: the test owns this HWND and posts only messages handled by
+        // this window's procedure on the current thread.
+        unsafe {
+            PostMessageW(Some(hwnd), WM_SIZE, WPARAM(2), resize).unwrap();
+            PostMessageW(Some(hwnd), WM_CLOSE, WPARAM(0), LPARAM(0)).unwrap();
+        }
+
+        assert_eq!(
+            window.poll_events().unwrap(),
+            vec![
+                WindowEvent::Resized {
+                    width: 320,
+                    height: 240,
+                },
+                WindowEvent::CloseRequested,
+            ]
+        );
+        assert!(window.close_requested());
+        window.close().unwrap();
+    }
+
+    #[test]
+    fn destroy_message_appends_one_terminal_event_after_prior_resize() {
+        let mut window =
+            Window::new(WindowConfig::new("fluxel-host destroy events", 320, 240).unwrap())
+                .unwrap();
+        let hwnd = window.state.hwnd.get().unwrap();
+
+        // Isolate explicit messages from the creation/show notification.
+        let _ = window.poll_events().unwrap();
+
+        // SAFETY: the test owns this HWND and uses messages handled by this
+        // window procedure. Posting WM_DESTROY exercises external terminal
+        // notification without asking the OS to destroy the test HWND twice.
+        unsafe {
+            PostMessageW(
+                Some(hwnd),
+                WM_SIZE,
+                WPARAM(2),
+                LPARAM((400_isize << 16) | 800),
+            )
+            .unwrap();
+            PostMessageW(Some(hwnd), WM_DESTROY, WPARAM(0), LPARAM(0)).unwrap();
+        }
+
+        assert_eq!(
+            window.poll_events().unwrap(),
+            vec![
+                WindowEvent::Resized {
+                    width: 800,
+                    height: 400,
+                },
+                WindowEvent::CloseRequested,
+            ]
+        );
+        assert!(window.close_requested());
+
+        // The synthetic WM_DESTROY did not destroy the HWND; explicit close
+        // dispatches a second terminal message which the helper must dedupe.
+        window.close().unwrap();
+        assert!(window.poll_events().unwrap().is_empty());
     }
 }

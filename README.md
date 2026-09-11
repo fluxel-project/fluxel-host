@@ -39,10 +39,13 @@ renderer.
 
 This repository records the native-host ownership boundary ahead of the Windows
 playable-runtime work; it does not claim completed EXE, APK/AAB, or IPA support.
-The current Stage 1.1 slice provides only a Windows `Window` primitive: fixed
-non-zero client extent, non-blocking message pump, close observation, explicit
-RAII destruction, and `raw-window-handle` 0.6 interoperability. It deliberately
-does not yet create a complete host runtime or a playable application.
+The current Windows `Window` primitive provides an initial non-zero client
+extent, non-blocking ordered close/resize/minimize/restore events in Win32
+client pixels, explicit RAII destruction, and `raw-window-handle` 0.6
+interoperability. Zero-size resize events are observable so the renderer can
+suspend its surface; the Host still does not own a swapchain. It deliberately
+does not yet create a complete host runtime, DPI policy, input, clock, or a
+playable application.
 The authoritative sequence, target evidence, and cross-repository contracts are
 maintained in the [Fluxel roadmap](https://github.com/fluxel-project/.github/blob/main/ROADMAP.md)
 and [ecosystem architecture](https://github.com/fluxel-project/.github/blob/main/ECOSYSTEM_ARCHITECTURE.md).

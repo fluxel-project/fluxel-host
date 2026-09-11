@@ -1,12 +1,42 @@
-//! A minimal fixed-size native window contract.
+//! A minimal native window and ordered lifecycle-event contract.
 //!
 //! `Window` deliberately exposes only creation, non-blocking event pumping,
-//! close observation, explicit destruction, and standard raw handles.  It
-//! does not establish a general host runtime or a resize/input policy.
+//! ordered close/size observation, explicit destruction, and standard raw
+//! handles. It does not establish a general host runtime, DPI policy, input,
+//! clock, or renderer/swapchain ownership.
 
 use core::{fmt, num::NonZeroU32};
 
-/// Configuration for one fixed-size native window.
+/// One native-window event observed by [`Window::poll_events`].
+///
+/// Width and height are Win32 client-pixel dimensions. A resize may contain a
+/// zero dimension: it is an observable platform transition, not permission to
+/// create a zero-sized rendering surface. `Minimized` is separate because
+/// Win32 identifies it explicitly through `WM_SIZE`.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[non_exhaustive]
+pub enum WindowEvent {
+    /// The client area changed to this size without a restore transition.
+    Resized {
+        /// Client-area width in Win32 client pixels; zero is valid.
+        width: u32,
+        /// Client-area height in Win32 client pixels; zero is valid.
+        height: u32,
+    },
+    /// The native window entered its minimized state.
+    Minimized,
+    /// The native window was restored with this client-area size.
+    Restored {
+        /// Client-area width in Win32 client pixels; zero is valid.
+        width: u32,
+        /// Client-area height in Win32 client pixels; zero is valid.
+        height: u32,
+    },
+    /// `WM_CLOSE` requested application shutdown without destroying the HWND.
+    CloseRequested,
+}
+
+/// Initial configuration for one native window.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct WindowConfig {
     title: String,
@@ -39,12 +69,12 @@ impl WindowConfig {
         &self.title
     }
 
-    /// Fixed client-area width requested during creation.
+    /// Initial client-area width requested during creation.
     pub fn client_width(&self) -> NonZeroU32 {
         self.client_width
     }
 
-    /// Fixed client-area height requested during creation.
+    /// Initial client-area height requested during creation.
     pub fn client_height(&self) -> NonZeroU32 {
         self.client_height
     }

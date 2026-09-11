@@ -7,4 +7,4 @@
 
 mod window;
 
-pub use window::{Window, WindowConfig, WindowError};
+pub use window::{Window, WindowConfig, WindowError, WindowEvent};

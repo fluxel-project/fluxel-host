@@ -4,7 +4,7 @@ use raw_window_handle::{
     DisplayHandle, HandleError, HasDisplayHandle, HasWindowHandle, WindowHandle,
 };
 
-use super::{WindowConfig, WindowError};
+use super::{WindowConfig, WindowError, WindowEvent};
 
 /// Placeholder preserving the public host contract on targets not yet implemented.
 pub struct Window {
@@ -19,7 +19,7 @@ impl Window {
     }
 
     /// There are no native messages to dispatch on an unsupported target.
-    pub fn poll_events(&self) -> Result<(), WindowError> {
+    pub fn poll_events(&self) -> Result<Vec<WindowEvent>, WindowError> {
         Err(WindowError::UnsupportedPlatform)
     }
 
