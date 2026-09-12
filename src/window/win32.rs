@@ -332,7 +332,6 @@ fn platform_error(error: windows::core::Error) -> WindowError {
 mod tests {
     use std::sync::Arc;
 
-    use raw_window_handle::{HasDisplayHandle as _, HasWindowHandle as _};
     use windows::Win32::UI::WindowsAndMessaging::PostMessageW;
 
     use super::*;
