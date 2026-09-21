@@ -120,7 +120,9 @@ impl WindowState {
     /// Records terminal native destruction before the owning `Box` may be dropped.
     fn native_destroyed(&self) {
         self.request_close_event();
-        self.hwnd.set(None);
+        if self.hwnd.replace(None).is_some() {
+            self.push_event(WindowEvent::SurfaceDestroyed);
+        }
     }
 }
 
@@ -136,7 +138,7 @@ impl Window {
             hinstance,
             close_requested: Cell::new(false),
             minimized: Cell::new(false),
-            events: RefCell::new(Vec::new()),
+            events: RefCell::new(vec![WindowEvent::SurfaceCreated]),
         });
         let mut rect = RECT {
             left: 0,
@@ -397,6 +399,7 @@ mod tests {
                     height: 240,
                 },
                 WindowEvent::CloseRequested,
+                WindowEvent::SurfaceDestroyed,
             ]
         );
     }
@@ -538,6 +541,9 @@ mod tests {
         // The synthetic WM_DESTROY did not destroy the HWND; explicit close
         // dispatches a second terminal message which the helper must dedupe.
         window.close().unwrap();
-        assert!(window.poll_events().unwrap().is_empty());
+        assert_eq!(
+            window.poll_events().unwrap(),
+            vec![WindowEvent::SurfaceDestroyed]
+        );
     }
 }

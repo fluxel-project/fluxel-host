@@ -16,6 +16,13 @@ use core::{fmt, num::NonZeroU32};
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum WindowEvent {
+    /// A platform supplied a native drawable. The window/display handle is
+    /// valid until the matching [`Self::SurfaceDestroyed`] event.
+    SurfaceCreated,
+    /// The platform revoked its native drawable. Consumers must stop acquiring
+    /// frames and release any RHI presentation target before returning from the
+    /// platform callback that reports this event.
+    SurfaceDestroyed,
     /// The client area changed to this size without a restore transition.
     Resized {
         /// Client-area width in Win32 client pixels; zero is valid.
@@ -25,6 +32,15 @@ pub enum WindowEvent {
     },
     /// The native window entered its minimized state.
     Minimized,
+    /// The platform suspended foreground rendering without destroying the
+    /// drawable. This is a lifecycle fact; a renderer chooses whether to idle
+    /// or retain its device.
+    Suspended,
+    /// The platform resumed foreground rendering after [`Self::Suspended`].
+    Resumed,
+    /// The platform requested that a frame be produced for the current
+    /// drawable, without implying a resize.
+    RedrawRequested,
     /// The native window was restored with this client-area size.
     Restored {
         /// Client-area width in Win32 client pixels; zero is valid.
@@ -99,9 +115,9 @@ impl fmt::Display for WindowError {
         match self {
             Self::ZeroClientExtent => f.write_str("window client extent must be non-zero"),
             Self::TitleContainsNul => f.write_str("window title must not contain an embedded NUL"),
-            Self::UnsupportedPlatform => {
-                f.write_str("the minimal Fluxel window is currently supported only on Windows")
-            }
+            Self::UnsupportedPlatform => f.write_str(
+                "the requested minimal Fluxel window operation is not supported on this platform",
+            ),
             Self::Platform(message) => write!(f, "native window operation failed: {message}"),
         }
     }
@@ -114,9 +130,19 @@ mod win32;
 #[cfg(windows)]
 pub use win32::Window;
 
-#[cfg(not(windows))]
+#[cfg(target_os = "android")]
+mod android;
+#[cfg(target_os = "android")]
+pub use android::Window;
+
+#[cfg(target_os = "ios")]
+mod ios;
+#[cfg(target_os = "ios")]
+pub use ios::Window;
+
+#[cfg(not(any(windows, target_os = "android", target_os = "ios")))]
 mod unsupported;
-#[cfg(not(windows))]
+#[cfg(not(any(windows, target_os = "android", target_os = "ios")))]
 pub use unsupported::Window;
 
 #[cfg(test)]
