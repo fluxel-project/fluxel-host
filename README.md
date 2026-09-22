@@ -1,7 +1,8 @@
 # Fluxel Host
 
-`fluxel-host` is the monorepo for native Fluxel application hosts that produce
-Windows executables, Android APK/AAB packages, and iOS IPA applications.
+`fluxel-host` is the monorepo for native Fluxel application-host foundations.
+It is intended to support Fluxel applications targeting Windows executables,
+Android APK/AAB packages, and iOS IPA applications.
 
 ## Scope
 
@@ -43,11 +44,11 @@ application-layer composition owns the frame loop, creates the RHI
 provider/surface through RHI's host-handle entry point, and decides how to
 react to resize, suspension, and device loss.
 
-## Status and roadmap
+## Current foundation
 
-This repository records the native-host ownership boundary ahead of the Windows
-playable-runtime work; it does not claim completed EXE, APK/AAB, or IPA support.
-The minimum cross-platform test-host surface is now:
+This repository establishes the native-host ownership boundary. It does not
+claim that complete EXE, APK/AAB, or IPA application delivery is available.
+The cross-platform test-host foundation provides:
 
 - Windows creates an owned Win32 `Window`, with ordered close/resize/minimize/
   restore events and explicit RAII destruction.
@@ -55,9 +56,10 @@ The minimum cross-platform test-host surface is now:
   valid lifecycle interval.
 - iOS adopts the `UIView` supplied by the UIKit application for its valid
   lifecycle interval.
-- All three expose `raw-window-handle` 0.6 plus ordered drawable-created,
-  drawable-destroyed, resize, suspend/resume, redraw, and close facts. They do
-  not create a GPU device, context, layer, surface, or swapchain.
+- All three expose the selected `raw-window-handle` API plus ordered
+  drawable-created, drawable-destroyed, resize, suspend/resume, redraw, and
+  close facts. They do not create a GPU device, context, layer, surface, or
+  swapchain.
 
 For platform smoke tests and examples, enable the optional `winit-runtime`
 feature. `HostRuntime` provides one event-driven callback contract across
@@ -75,10 +77,24 @@ DOM canvas, CSS × DPR sizing, RAF, visibility, and browser context-loss are not
 native-host concerns and must not be duplicated here.
 
 This platform runtime is intentionally sufficient for RHI examples and
-conformance runners, not a complete application runtime: DPI policy, input,
-clock, Android/iOS package bootstraps, and playable-app orchestration remain
-out of scope. A future runnable application may compose it with rendering at
-the application layer without changing the platform-library dependency rule.
-The authoritative sequence, target evidence, and cross-repository contracts are
+conformance runners, not a complete application runtime. DPI policy, input,
+clock, Android/iOS package bootstraps, and playable-application orchestration
+are not provided by this foundation.
+
+## Planned milestones
+
+The native-host plan is to prove runnable application composition as real
+targets require it, while preserving the platform-library boundary:
+
+- add application-layer composition that can combine host lifecycle with
+  rendering without making platform-library crates depend on rendering;
+- establish platform packaging and lifecycle evidence for Windows, Android, and
+  iOS; and
+- grow platform services such as input, time, storage, networking, media, and
+  diagnostics only when a target demonstrates their contract.
+
+A runnable application may compose this foundation with rendering at the
+application layer without changing the platform-library dependency rule. The
+authoritative sequence, target evidence, and cross-repository contracts are
 maintained in the [Fluxel roadmap](https://github.com/fluxel-project/.github/blob/main/ROADMAP.md)
 and [ecosystem architecture](https://github.com/fluxel-project/.github/blob/main/ECOSYSTEM_ARCHITECTURE.md).
