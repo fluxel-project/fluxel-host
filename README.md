@@ -24,14 +24,13 @@ Expected ownership includes:
 
 ## Non-scope
 
-`fluxel-host` does not define rendering semantics, GPU resource management,
-RenderGraph behavior, renderer `Surface`/swapchain ownership, or the public
+`fluxel-host` does not define `RenderScene`, `FramePipeline`, material or
+shader behavior, RenderGraph behavior, the portable RHI contract, or the public
 cross-platform language SDK. Its platform-library crates are platform leaves:
 they supply windows, display handles, and lifecycle facts, but do not depend on
 `fluxel-rendering` or any RHI crate. An application-layer runtime or final
-EXE/APK/IPA composition in this repository may combine those platform crates
-with `fluxel-rendering`. That composition is a consumer of both libraries, not
-a dependency of the platform-library boundary.
+EXE/APK/IPA composition in this repository may consume the host foundation and
+`fluxel-rendering`; it is not part of the platform-library boundary.
 Browser and mini-game adapters, along with their developer-facing JavaScript
 API, belong to `fluxel-jsbridge`, not to this repository.
 
@@ -40,9 +39,10 @@ API, belong to `fluxel-jsbridge`, not to this repository.
 Platform-library crates in `fluxel-host` may depend on platform-neutral
 foundation crates such as `fluxel-bases`, but never on `fluxel-rendering`. A
 platform host owns platform resources and reports their lifecycle. The
-application-layer composition owns the frame loop, creates the RHI
-provider/surface through RHI's host-handle entry point, and decides how to
-react to resize, suspension, and device loss.
+application-layer composition owns the frame loop, uses RHI's host-handle entry
+point to create presentation state, drives the renderer, and decides how to
+react to resize, suspension, and device loss. Rendering-layer ownership and
+dependency direction are defined by `fluxel-rendering`.
 
 ## Current foundation
 
