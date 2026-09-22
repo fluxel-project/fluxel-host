@@ -38,10 +38,16 @@ API, belong to `fluxel-jsbridge`, not to this repository.
 
 Platform-library crates in `fluxel-host` may depend on platform-neutral
 foundation crates such as `fluxel-bases`, but never on `fluxel-rendering`. A
-platform host owns platform resources and reports their lifecycle. The
-application-layer composition owns the frame loop, uses RHI's host-handle entry
-point to create presentation state, drives the renderer, and decides how to
-react to resize, suspension, and device loss. Rendering-layer ownership and
+platform host owns platform resources and reports their lifecycle. Native
+`fluxel-host` runtime or executable composition owns the host-to-RHI integration
+adapter: it consumes host lifecycle facts and borrows the standard
+`raw-window-handle` facts only while it creates or retires an opaque RHI
+`PresentationTarget`. The adapter retains the host object for the configured
+surface lease, so a target cannot outlive its native window. This composition
+then owns the frame loop, drives the renderer, and decides how to react to
+resize, suspension, and device loss. The adapter is part of native consumer
+composition, not a fifth repository or a platform-library crate; the latter
+remain independent of `fluxel-rendering` and RHI. Rendering-layer ownership and
 dependency direction are defined by `fluxel-rendering`.
 
 ## Current foundation
@@ -68,8 +74,9 @@ Windows/iOS use `HostRuntime::new()` on their UI thread; Android calls
 `HostRuntime::from_android_app()` from `android_main` using the re-exported
 `fluxel_host::AndroidApp`. No RHI type is involved in this platform runtime. A
 runtime callback creates its `HostWindow` only from `resumed`, consumes ordered
-`WindowEvent`s, and hands the borrowed raw handle to an application-layer
-composition, RHI-side test, or example.
+`WindowEvent`s, and exposes the borrowed raw handle to the native
+application-layer integration adapter. Adapter fixtures may use that same
+boundary for RHI examples and conformance workloads.
 
 Browser host lifecycle is deliberately implemented by
 [`@fluxel/browser`](https://github.com/fluxel-project/fluxel-jsbridge/tree/main/packages/browser):
@@ -87,7 +94,9 @@ The native-host plan is to prove runnable application composition as real
 targets require it, while preserving the platform-library boundary:
 
 - add application-layer composition that can combine host lifecycle with
-  rendering without making platform-library crates depend on rendering;
+  rendering through the host-to-RHI integration adapter, which produces RHI
+  `PresentationTarget`s without making platform-library crates depend on
+  rendering or RHI;
 - establish platform packaging and lifecycle evidence for Windows, Android, and
   iOS; and
 - grow platform services such as input, time, storage, networking, media, and
