@@ -9,9 +9,9 @@ mod window;
 
 pub use window::{Window, WindowConfig, WindowError, WindowEvent};
 
-#[cfg(feature = "winit-runtime")]
+#[cfg(any(feature = "winit-runtime", feature = "winit-runtime-wayland"))]
 mod runtime;
 #[cfg(all(feature = "winit-runtime", target_os = "android"))]
 pub use runtime::AndroidApp;
-#[cfg(feature = "winit-runtime")]
+#[cfg(any(feature = "winit-runtime", feature = "winit-runtime-wayland"))]
 pub use runtime::{HostApplication, HostContext, HostRuntime, HostRuntimeError, HostWindow};

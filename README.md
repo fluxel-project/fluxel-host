@@ -68,10 +68,12 @@ The cross-platform test-host foundation provides:
   swapchain.
 
 For platform smoke tests and examples, enable the optional `winit-runtime`
-feature. `HostRuntime` provides one event-driven callback contract across
-Windows, Linux/X11 desktop, Android, and iOS while keeping `winit` private to
-the implementation. Windows/Linux/iOS use `HostRuntime::new()` on their UI
-thread; Android calls `HostRuntime::from_android_app()` from `android_main` using
+feature for Windows, Linux/X11, Android, and iOS. Linux applications running
+under a Wayland compositor can select `winit-runtime-wayland` instead; it uses
+Winit's dynamically loaded Wayland client. Both features provide the same
+event-driven callback contract while keeping `winit` private to the
+implementation. Windows/Linux/iOS use `HostRuntime::new()` on their UI thread;
+Android calls `HostRuntime::from_android_app()` from `android_main` using
 the re-exported `fluxel_host::AndroidApp`. No RHI type is involved in this platform runtime. A
 runtime callback creates its `HostWindow` only from `resumed`, consumes ordered
 `WindowEvent`s, and exposes the borrowed raw handle to the native
