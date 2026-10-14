@@ -69,10 +69,10 @@ The cross-platform test-host foundation provides:
 
 For platform smoke tests and examples, enable the optional `winit-runtime`
 feature. `HostRuntime` provides one event-driven callback contract across
-Windows, Android, and iOS while keeping `winit` private to the implementation.
-Windows/iOS use `HostRuntime::new()` on their UI thread; Android calls
-`HostRuntime::from_android_app()` from `android_main` using the re-exported
-`fluxel_host::AndroidApp`. No RHI type is involved in this platform runtime. A
+Windows, Linux/X11 desktop, Android, and iOS while keeping `winit` private to
+the implementation. Windows/Linux/iOS use `HostRuntime::new()` on their UI
+thread; Android calls `HostRuntime::from_android_app()` from `android_main` using
+the re-exported `fluxel_host::AndroidApp`. No RHI type is involved in this platform runtime. A
 runtime callback creates its `HostWindow` only from `resumed`, consumes ordered
 `WindowEvent`s, and exposes the borrowed raw handle to the native
 application-layer integration adapter. Adapter fixtures may use that same

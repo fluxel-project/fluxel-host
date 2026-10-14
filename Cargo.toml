@@ -16,7 +16,7 @@ winit-runtime = ["dep:winit"]
 
 [dependencies]
 raw-window-handle = "0.6.2"
-winit = { version = "0.30.12", default-features = false, features = ["rwh_06", "android-native-activity"], optional = true }
+winit = { version = "0.30.12", default-features = false, features = ["rwh_06", "android-native-activity", "x11"], optional = true }
 
 [target.'cfg(windows)'.dependencies]
 windows = { version = "=0.62.2", features = [
