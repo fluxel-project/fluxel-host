@@ -12,11 +12,12 @@ readme = "README.md"
 # Event-driven native bootstrap for presentation tests and examples.  It is
 # deliberately optional: the small adopted-handle types remain useful for
 # applications which already own an Android Activity or UIKit view.
-winit-runtime = ["dep:winit"]
+winit-runtime = ["dep:winit", "winit/x11"]
+winit-runtime-wayland = ["dep:winit", "winit/wayland", "winit/wayland-dlopen"]
 
 [dependencies]
 raw-window-handle = "0.6.2"
-winit = { version = "0.30.12", default-features = false, features = ["rwh_06", "android-native-activity", "x11"], optional = true }
+winit = { version = "0.30.12", default-features = false, features = ["rwh_06", "android-native-activity"], optional = true }
 
 [target.'cfg(windows)'.dependencies]
 windows = { version = "=0.62.2", features = [
