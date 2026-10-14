@@ -26,6 +26,12 @@ impl HostWindow {
     pub fn request_redraw(&self) {
         self.inner.request_redraw();
     }
+
+    /// Returns the client drawable extent in physical pixels.
+    pub fn inner_size(&self) -> [u32; 2] {
+        let size = self.inner.inner_size();
+        [size.width, size.height]
+    }
 }
 
 impl HasWindowHandle for HostWindow {
