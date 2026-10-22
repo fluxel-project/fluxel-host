@@ -6,12 +6,13 @@ use raw_window_handle::{
 use winit::{
     application::ApplicationHandler,
     dpi::PhysicalSize,
-    event::WindowEvent as WinitWindowEvent,
+    event::{ElementState, Ime, MouseScrollDelta, WindowEvent as WinitWindowEvent},
     event_loop::{ActiveEventLoop, EventLoop},
+    keyboard::{Key as WinitKey, NamedKey},
     window::{Window as WinitWindow, WindowAttributes, WindowId},
 };
 
-use crate::{WindowConfig, WindowError, WindowEvent};
+use crate::{Key, MouseButton, WindowConfig, WindowError, WindowEvent};
 
 /// A native window created by [`HostContext`] while the platform permits it.
 ///
@@ -83,6 +84,7 @@ impl<'a> HostContext<'a> {
                 .event_loop
                 .create_window(attributes)
                 .map_err(|error| WindowError::Platform(error.to_string()))?;
+            window.set_ime_allowed(true);
             *self.window = Some(HostWindow { inner: window });
         }
         Ok(self.window.as_ref().expect("window was just created"))
@@ -222,7 +224,53 @@ impl<A: HostApplication> ApplicationHandler for Runner<A> {
         if self.window.as_ref().map(|window| window.inner.id()) != Some(window_id) {
             return;
         }
+        if let WinitWindowEvent::KeyboardInput { event, .. } = &event {
+            let key = translate_key(&event.logical_key);
+            self.emit(
+                event_loop,
+                WindowEvent::KeyboardInput {
+                    key,
+                    pressed: event.state == ElementState::Pressed,
+                    repeat: event.repeat,
+                },
+            );
+            if event.state == ElementState::Pressed {
+                if let Some(text) = &event.text {
+                    if !text.is_empty() && !text.chars().any(char::is_control) {
+                        self.emit(event_loop, WindowEvent::TextInput(text.to_string()));
+                    }
+                }
+            }
+            return;
+        }
         let translated = match event {
+            WinitWindowEvent::CursorMoved { position, .. } => Some(WindowEvent::CursorMoved {
+                x: position.x,
+                y: position.y,
+            }),
+            WinitWindowEvent::CursorLeft { .. } => Some(WindowEvent::CursorLeft),
+            WinitWindowEvent::Focused(focused) => Some(WindowEvent::Focused(focused)),
+            WinitWindowEvent::MouseInput { state, button, .. } => Some(WindowEvent::MouseInput {
+                button: match button {
+                    winit::event::MouseButton::Left => MouseButton::Left,
+                    winit::event::MouseButton::Right => MouseButton::Right,
+                    winit::event::MouseButton::Middle => MouseButton::Middle,
+                    winit::event::MouseButton::Back => MouseButton::Other(4),
+                    winit::event::MouseButton::Forward => MouseButton::Other(5),
+                    winit::event::MouseButton::Other(value) => MouseButton::Other(value),
+                },
+                pressed: state == ElementState::Pressed,
+            }),
+            WinitWindowEvent::MouseWheel { delta, .. } => {
+                let (x, y) = match delta {
+                    MouseScrollDelta::LineDelta(x, y) => (x, y),
+                    MouseScrollDelta::PixelDelta(p) => (p.x as f32 / 40.0, p.y as f32 / 40.0),
+                };
+                Some(WindowEvent::MouseWheel { x, y })
+            }
+            WinitWindowEvent::Ime(Ime::Commit(text)) if !text.is_empty() => {
+                Some(WindowEvent::TextInput(text))
+            }
             WinitWindowEvent::Resized(size) => Some(WindowEvent::Resized {
                 width: size.width,
                 height: size.height,
@@ -244,5 +292,61 @@ impl<A: HostApplication> ApplicationHandler for Runner<A> {
             self.surface_live = false;
             self.emit(event_loop, WindowEvent::SurfaceDestroyed);
         }
+    }
+}
+
+fn translate_key(key: &WinitKey) -> Key {
+    match key {
+        WinitKey::Character(value) => {
+            let mut chars = value.chars();
+            match (chars.next(), chars.next()) {
+                (Some(c), None) => Key::Character(c.to_ascii_lowercase()),
+                _ => Key::Other,
+            }
+        }
+        WinitKey::Named(named) => match named {
+            NamedKey::Escape => Key::Escape,
+            NamedKey::Enter => Key::Enter,
+            NamedKey::Tab => Key::Tab,
+            NamedKey::Backspace => Key::Backspace,
+            NamedKey::Delete => Key::Delete,
+            NamedKey::Insert => Key::Insert,
+            NamedKey::Home => Key::Home,
+            NamedKey::End => Key::End,
+            NamedKey::PageUp => Key::PageUp,
+            NamedKey::PageDown => Key::PageDown,
+            NamedKey::ArrowLeft => Key::ArrowLeft,
+            NamedKey::ArrowRight => Key::ArrowRight,
+            NamedKey::ArrowUp => Key::ArrowUp,
+            NamedKey::ArrowDown => Key::ArrowDown,
+            NamedKey::Space => Key::Space,
+            NamedKey::Shift => Key::Shift,
+            NamedKey::Control => Key::Control,
+            NamedKey::Alt => Key::Alt,
+            NamedKey::Super => Key::Super,
+            _ => Key::Other,
+        },
+        _ => Key::Other,
+    }
+}
+
+#[cfg(test)]
+mod input_tests {
+    use super::*;
+    #[test]
+    fn logical_keys_are_normalized_and_named_keys_are_preserved() {
+        assert_eq!(
+            translate_key(&WinitKey::Character("A".into())),
+            Key::Character('a')
+        );
+        assert_eq!(
+            translate_key(&WinitKey::Named(NamedKey::ArrowLeft)),
+            Key::ArrowLeft
+        );
+        assert_eq!(
+            translate_key(&WinitKey::Named(NamedKey::Control)),
+            Key::Control
+        );
+        assert_eq!(translate_key(&WinitKey::Character("ab".into())), Key::Other);
     }
 }

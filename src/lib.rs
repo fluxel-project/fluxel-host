@@ -2,12 +2,12 @@
 //!
 //! This crate owns native window creation and its message pump.  Renderers only
 //! consume the standard [`raw_window_handle`] traits; surfaces, swapchains,
-//! GPU synchronization, input, clocks, and application loops remain outside
+//! GPU synchronization and clocks remain outside
 //! this deliberately small boundary.
 
 mod window;
 
-pub use window::{Window, WindowConfig, WindowError, WindowEvent};
+pub use window::{Key, MouseButton, Window, WindowConfig, WindowError, WindowEvent};
 
 #[cfg(any(feature = "winit-runtime", feature = "winit-runtime-wayland"))]
 mod runtime;

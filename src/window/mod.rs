@@ -1,11 +1,55 @@
 //! A minimal native window and ordered lifecycle-event contract.
 //!
-//! `Window` deliberately exposes only creation, non-blocking event pumping,
-//! ordered close/size observation, explicit destruction, and standard raw
-//! handles. It does not establish a general host runtime, DPI policy, input,
-//! clock, or renderer/swapchain ownership.
+//! `Window` exposes creation, non-blocking event pumping, ordered close/size
+//! observation, explicit destruction, and standard raw handles. It does not
+//! establish a general host runtime, DPI policy, clock, or renderer/swapchain
+//! ownership. The optional event-driven runtime also forwards input; the
+//! minimal platform window may expose only lifecycle events.
 
 use core::{fmt, num::NonZeroU32};
+
+/// Mouse button reported by the event-driven runtime.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[non_exhaustive]
+pub enum MouseButton {
+    /// Primary button.
+    Left,
+    /// Secondary button.
+    Right,
+    /// Middle button.
+    Middle,
+    /// Additional platform button.
+    Other(u16),
+}
+
+/// Logical key reported independently of text entry.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[non_exhaustive]
+pub enum Key {
+    /// One logical character; ASCII letters are normalized to lowercase.
+    Character(char),
+    Escape,
+    Enter,
+    Tab,
+    Backspace,
+    Delete,
+    Insert,
+    Home,
+    End,
+    PageUp,
+    PageDown,
+    ArrowLeft,
+    ArrowRight,
+    ArrowUp,
+    ArrowDown,
+    Space,
+    Shift,
+    Control,
+    Alt,
+    Super,
+    /// A key without a representation in this contract.
+    Other,
+}
 
 /// One native-window event observed by [`Window::poll_events`].
 ///
@@ -13,7 +57,7 @@ use core::{fmt, num::NonZeroU32};
 /// zero dimension: it is an observable platform transition, not permission to
 /// create a zero-sized rendering surface. `Minimized` is separate because
 /// Win32 identifies it explicitly through `WM_SIZE`.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 pub enum WindowEvent {
     /// A platform supplied a native drawable. The window/display handle is
@@ -48,6 +92,24 @@ pub enum WindowEvent {
         /// Client-area height in Win32 client pixels; zero is valid.
         height: u32,
     },
+    /// Cursor position in physical client pixels.
+    CursorMoved { x: f64, y: f64 },
+    /// The cursor left the client area.
+    CursorLeft,
+    /// A mouse button changed state.
+    MouseInput { button: MouseButton, pressed: bool },
+    /// Wheel displacement in lines; pixel deltas are converted at 40 pixels per line.
+    MouseWheel { x: f32, y: f32 },
+    /// A logical key changed state. Repeat is set for repeated presses.
+    KeyboardInput {
+        key: Key,
+        pressed: bool,
+        repeat: bool,
+    },
+    /// Committed text, including IME input.
+    TextInput(String),
+    /// Keyboard focus changed. Consumers should clear held input on focus loss.
+    Focused(bool),
     /// `WM_CLOSE` requested application shutdown without destroying the HWND.
     CloseRequested,
 }
