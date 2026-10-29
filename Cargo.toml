@@ -1,12 +1,18 @@
 [package]
 name = "fluxel-host"
-version = "0.2.0"
+version = "0.1.0"
 edition = "2024"
 rust-version = "1.87"
 license = "MIT OR Apache-2.0"
 description = "Native host primitives for Fluxel applications"
 repository = "https://github.com/fluxel-project/fluxel-host"
 readme = "README.md"
+documentation = "https://docs.rs/fluxel-host"
+keywords = ["windowing", "raw-window-handle", "native", "lifecycle"]
+categories = ["gui", "os"]
+
+[package.metadata.docs.rs]
+features = ["winit-runtime"]
 
 [features]
 # Event-driven native bootstrap for presentation tests and examples.  It is
