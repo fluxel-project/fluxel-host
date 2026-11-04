@@ -44,4 +44,13 @@ The crate owns native window handles and ordered lifecycle notifications. It doe
 
 See the [API documentation](https://docs.rs/fluxel-host), the [RHI verification guide](https://github.com/fluxel-project/fluxel-rhi/blob/main/documents/verification.md), and the [Fluxel ecosystem architecture](https://github.com/fluxel-project/.github/blob/main/ECOSYSTEM_ARCHITECTURE.md).
 
+## Rendering consumer evidence
+
+Rendering's bounded S6 MVP retains the unchanged Host revision `33a6bbb` and
+uses native resize events only as Surface lifecycle evidence before RHI
+reconfiguration/acquisition. The audited DX12/WGL result is recorded in the
+[S6 closure record](https://github.com/fluxel-project/fluxel-rendering/blob/c163db2362154fbb75289a6a5263312b69350d1e/documents/s6-typed-forward-closure.md).
+It does not make Host a renderer or establish browser, S7/S8, or full-regression
+support.
+
 Requires Rust 1.87 or newer. Licensed under `MIT OR Apache-2.0`.
