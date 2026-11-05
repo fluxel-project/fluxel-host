@@ -60,11 +60,17 @@ See the [API documentation](https://docs.rs/fluxel-host), the [RHI verification 
 
 ## Rendering consumer evidence
 
-Rendering's bounded S6 MVP retains the unchanged Host revision `33a6bbb` and
-uses native resize events only as Surface lifecycle evidence before RHI
-reconfiguration/acquisition. The audited DX12/WGL result is recorded in the
-[S6 closure record](https://github.com/fluxel-project/fluxel-rendering/blob/c163db2362154fbb75289a6a5263312b69350d1e/documents/s6-typed-forward-closure.md).
-It does not make Host a renderer or establish browser, S7/S8, or full-regression
-support.
+Rendering's bounded S7/S8 consumer result uses Host `8d10162` for native-window
+lifecycle only. `WindowVisibility::Hidden` creates a non-visible host for
+offscreen work; `show_background` makes its first Windows transition at the
+bottom of the non-topmost z-order without foreground activation, and remains
+idempotent after the window becomes visible. This supports native DX12/WGL demo
+presentation and independent Windows Graphics Capture without changing focus or
+z-order; the evidence oracle excludes only the two bottom 16x16 DWM decoration
+corners, never RHI readback pixels. It is not a GPU, Surface, scheduling, or
+renderer-ownership contract. The
+[S7 historical closure](https://github.com/fluxel-project/fluxel-rendering/blob/main/documents/s7-deferred-closure.md)
+and [S8 measured closure](https://github.com/fluxel-project/fluxel-rendering/blob/main/documents/s8-measured-closure.md)
+do not establish browser support.
 
 Requires Rust 1.87 or newer. Licensed under `MIT OR Apache-2.0`.
