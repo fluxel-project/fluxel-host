@@ -23,10 +23,14 @@ fluxel-host = { version = "0.1.0", features = ["winit-runtime"] }
 ## Minimal Win32 window
 
 ```rust
-use fluxel_host::{Window, WindowConfig, WindowEvent};
+use fluxel_host::{Window, WindowConfig, WindowEvent, WindowVisibility};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let mut window = Window::new(WindowConfig::new("Fluxel", 1280, 720)?)?;
+    let config = WindowConfig::new("Fluxel", 1280, 720)?
+        .with_visibility(WindowVisibility::Hidden);
+    let mut window = Window::new(config)?;
+    // Create the renderer and submit its first frame before this call.
+    window.show_background()?;
     for event in window.poll_events()? {
         if matches!(event, WindowEvent::CloseRequested) {
             window.close()?;
@@ -35,6 +39,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 ```
+
+New windows default to `WindowVisibility::Background`: on the minimal Win32
+backend they are shown without activation at the bottom of the z-order. Use
+`Hidden` when setup must finish before the first visible frame, then call
+`show_background`. That method intentionally does not install a permanent
+no-activate style, so a user can select the window normally. The optional
+winit runtime asks platforms to create windows hidden and inactive. On Windows
+its `show_background` has the same non-activating background transition; other
+platforms receive a best-effort visibility request because winit does not
+expose an equivalent z-order operation.
 
 On Android and iOS, adopt platform-provided native objects during their valid lifecycle instead of calling `Window::new`; use the optional `HostRuntime` integration where supported. `Window` implements applicable `raw-window-handle` traits for RHI and other native consumers.
 

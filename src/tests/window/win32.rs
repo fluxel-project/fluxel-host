@@ -1,6 +1,9 @@
 use std::sync::Arc;
 
-use windows::Win32::UI::WindowsAndMessaging::PostMessageW;
+use windows::Win32::UI::WindowsAndMessaging::{
+    GW_HWNDPREV, GWL_EXSTYLE, GetForegroundWindow, GetWindow, GetWindowLongPtrW, IsWindowVisible,
+    PostMessageW, WS_EX_TOPMOST,
+};
 
 use super::*;
 
@@ -9,12 +12,17 @@ use super::*;
 fn create_handles_and_drop_can_repeat() {
     for _ in 0..2 {
         let window = Arc::new(
-            Window::new(WindowConfig::new("fluxel-host test", 320, 240).unwrap()).unwrap(),
+            Window::new(
+                WindowConfig::new("fluxel-host test", 320, 240)
+                    .unwrap()
+                    .with_visibility(WindowVisibility::Hidden),
+            )
+            .unwrap(),
         );
         assert!(window.window_handle().is_ok());
         assert!(window.display_handle().is_ok());
-        // Showing a newly-created Win32 window may itself enqueue an
-        // initial size notification; it is a real platform event.
+        // Hidden creation must not disturb the desktop during native tests.
+        assert!(!unsafe { IsWindowVisible(window.state.hwnd.get().unwrap()) }.as_bool());
         let _ = window.poll_events().unwrap();
         let mut window = match Arc::try_unwrap(window) {
             Ok(window) => window,
@@ -23,6 +31,53 @@ fn create_handles_and_drop_can_repeat() {
         window.close().unwrap();
         assert!(window.close_requested());
     }
+}
+
+#[test]
+#[ignore = "requires a caller-coordinated interactive Windows desktop"]
+fn background_presentation_preserves_foreground_and_is_idempotent() {
+    let foreground_before = unsafe { GetForegroundWindow() };
+    assert_ne!(foreground_before, HWND(std::ptr::null_mut()));
+
+    let mut window = Window::new(
+        WindowConfig::new("fluxel-host background policy", 320, 240)
+            .unwrap()
+            .with_visibility(WindowVisibility::Hidden),
+    )
+    .unwrap();
+    let hwnd = window.state.hwnd.get().unwrap();
+    assert!(!unsafe { IsWindowVisible(hwnd) }.as_bool());
+    assert_eq!(unsafe { GetForegroundWindow() }, foreground_before);
+
+    window.show_background().unwrap();
+    assert!(unsafe { IsWindowVisible(hwnd) }.as_bool());
+    assert_eq!(unsafe { GetForegroundWindow() }, foreground_before);
+    let ex_style = unsafe { GetWindowLongPtrW(hwnd, GWL_EXSTYLE) } as u32;
+    assert_eq!(ex_style & WS_EX_TOPMOST.0, 0);
+
+    let predecessor = unsafe { GetWindow(hwnd, GW_HWNDPREV) }.unwrap();
+    assert_ne!(predecessor, HWND(std::ptr::null_mut()));
+    let mut above = predecessor;
+    let mut foreground_is_above = false;
+    while above != HWND(std::ptr::null_mut()) {
+        if above == foreground_before {
+            foreground_is_above = true;
+            break;
+        }
+        above = unsafe { GetWindow(above, GW_HWNDPREV) }.unwrap();
+    }
+    assert!(foreground_is_above);
+
+    // Once visible, presentation is intentionally inert so a user-selected
+    // window is not demoted by a duplicate first-frame notification.
+    window.show_background().unwrap();
+    assert_eq!(unsafe { GetForegroundWindow() }, foreground_before);
+    assert_eq!(
+        unsafe { GetWindow(hwnd, GW_HWNDPREV) }.unwrap(),
+        predecessor
+    );
+
+    window.close().unwrap();
 }
 
 #[test]
@@ -72,11 +127,15 @@ fn native_destruction_makes_repeated_close_idempotent() {
 
 #[test]
 fn close_message_preserves_window_until_explicit_close() {
-    let mut window =
-        Window::new(WindowConfig::new("fluxel-host lifecycle", 320, 240).unwrap()).unwrap();
+    let mut window = Window::new(
+        WindowConfig::new("fluxel-host lifecycle", 320, 240)
+            .unwrap()
+            .with_visibility(WindowVisibility::Hidden),
+    )
+    .unwrap();
     let hwnd = window.state.hwnd.get().unwrap();
 
-    // Isolate the subsequently posted close from the creation/show event.
+    // Isolate the subsequently posted close from creation-time messages.
     let _ = window.poll_events().unwrap();
 
     // SAFETY: `hwnd` is owned by this test's window on the current thread.
@@ -139,12 +198,16 @@ fn ordered_size_events_preserve_resize_minimize_restore_and_zero_extent() {
 
 #[test]
 fn queued_win32_messages_emit_events_in_dispatch_order() {
-    let mut window =
-        Window::new(WindowConfig::new("fluxel-host events", 320, 240).unwrap()).unwrap();
+    let mut window = Window::new(
+        WindowConfig::new("fluxel-host events", 320, 240)
+            .unwrap()
+            .with_visibility(WindowVisibility::Hidden),
+    )
+    .unwrap();
     let hwnd = window.state.hwnd.get().unwrap();
     let resize = LPARAM((240_isize << 16) | 320);
 
-    // Isolate explicit messages from the creation/show notification.
+    // Isolate explicit messages from creation-time notifications.
     let _ = window.poll_events().unwrap();
 
     // SAFETY: the test owns this HWND and posts only messages handled by
@@ -170,12 +233,15 @@ fn queued_win32_messages_emit_events_in_dispatch_order() {
 
 #[test]
 fn destroy_message_appends_one_terminal_event_after_prior_resize() {
-    let mut window =
-        Window::new(WindowConfig::new("fluxel-host destroy events", 320, 240).unwrap())
-            .unwrap();
+    let mut window = Window::new(
+        WindowConfig::new("fluxel-host destroy events", 320, 240)
+            .unwrap()
+            .with_visibility(WindowVisibility::Hidden),
+    )
+    .unwrap();
     let hwnd = window.state.hwnd.get().unwrap();
 
-    // Isolate explicit messages from the creation/show notification.
+    // Isolate explicit messages from creation-time notifications.
     let _ = window.poll_events().unwrap();
 
     // SAFETY: the test owns this HWND and uses messages handled by this

@@ -22,16 +22,17 @@ use windows::{
         System::LibraryLoader::GetModuleHandleW,
         UI::WindowsAndMessaging::{
             AdjustWindowRectEx, CREATESTRUCTW, CS_HREDRAW, CS_VREDRAW, CreateWindowExW,
-            DefWindowProcW, DestroyWindow, DispatchMessageW, GWLP_USERDATA, IDC_ARROW, LoadCursorW,
-            MSG, PM_REMOVE, PeekMessageW, RegisterClassW, SIZE_MINIMIZED, SIZE_RESTORED, SW_SHOW,
-            ShowWindow, TranslateMessage, WINDOW_EX_STYLE, WM_CLOSE, WM_DESTROY, WM_NCCREATE,
+            DefWindowProcW, DestroyWindow, DispatchMessageW, GWLP_USERDATA, HWND_BOTTOM, IDC_ARROW,
+            IsWindowVisible, LoadCursorW, MSG, PM_REMOVE, PeekMessageW, RegisterClassW,
+            SIZE_MINIMIZED, SIZE_RESTORED, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SWP_SHOWWINDOW,
+            SetWindowPos, TranslateMessage, WINDOW_EX_STYLE, WM_CLOSE, WM_DESTROY, WM_NCCREATE,
             WM_NCDESTROY, WM_SIZE, WNDCLASSW, WS_OVERLAPPEDWINDOW,
         },
     },
     core::PCWSTR,
 };
 
-use super::{WindowConfig, WindowError, WindowEvent};
+use super::{WindowConfig, WindowError, WindowEvent, WindowVisibility};
 
 const CLASS_NAME: &[u16] = &[
     b'F' as u16,
@@ -127,7 +128,11 @@ impl WindowState {
 }
 
 impl Window {
-    /// Creates and shows a Win32 overlapped window with the requested client extent.
+    /// Creates a Win32 overlapped window with the requested client extent.
+    ///
+    /// The window is created without `WS_VISIBLE`. A background configuration
+    /// is then shown with `SWP_NOACTIVATE` at the bottom of the z-order; a
+    /// hidden configuration remains hidden until [`Self::show_background`].
     pub fn new(config: WindowConfig) -> Result<Self, WindowError> {
         let hinstance = unsafe { GetModuleHandleW(None) }.map_err(platform_error)?;
         let hinstance = HINSTANCE(hinstance.0);
@@ -169,13 +174,14 @@ impl Window {
         }
         .map_err(platform_error)?;
         state.hwnd.set(Some(hwnd));
-        // SAFETY: `hwnd` was created above and the current thread owns it.
-        // Showing may legitimately report that the window was not previously visible.
-        let _ = unsafe { ShowWindow(hwnd, SW_SHOW) };
-        Ok(Self {
+        let window = Self {
             state,
             _thread_affinity: PhantomData,
-        })
+        };
+        if config.visibility() == WindowVisibility::Background {
+            window.show_background()?;
+        }
+        Ok(window)
     }
 
     /// Dispatches queued messages and returns this window's events in Win32
@@ -201,6 +207,39 @@ impl Window {
     /// Returns whether `WM_CLOSE` or `WM_DESTROY` has stopped future frames.
     pub fn close_requested(&self) -> bool {
         self.state.close_requested.get()
+    }
+
+    /// Shows this window behind existing work without activating it.
+    ///
+    /// This is intended for the first presentation after a hidden setup
+    /// interval. It deliberately does not set a permanent no-activate window
+    /// style, so normal user clicks and Alt+Tab can activate the window.
+    pub fn show_background(&self) -> Result<(), WindowError> {
+        let hwnd = self
+            .state
+            .hwnd
+            .get()
+            .ok_or_else(|| WindowError::Platform("window has been destroyed".to_owned()))?;
+        // Do not demote a window which a user has since selected. The initial
+        // hidden-to-visible transition is the only one this method owns.
+        if unsafe { IsWindowVisible(hwnd) }.as_bool() {
+            return Ok(());
+        }
+        // SAFETY: `hwnd` is live and owned by the current thread. HWND_BOTTOM
+        // plus SWP_NOACTIVATE prevents this automatic presentation from taking
+        // foreground focus or raising over the user's current window.
+        unsafe {
+            SetWindowPos(
+                hwnd,
+                Some(HWND_BOTTOM),
+                0,
+                0,
+                0,
+                0,
+                SWP_SHOWWINDOW | SWP_NOACTIVATE | SWP_NOMOVE | SWP_NOSIZE,
+            )
+        }
+        .map_err(platform_error)
     }
 
     /// Explicitly destroys the HWND if it has not already been destroyed.

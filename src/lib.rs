@@ -7,7 +7,9 @@
 
 mod window;
 
-pub use window::{Key, MouseButton, Window, WindowConfig, WindowError, WindowEvent};
+pub use window::{
+    Key, MouseButton, Window, WindowConfig, WindowError, WindowEvent, WindowVisibility,
+};
 
 #[cfg(any(feature = "winit-runtime", feature = "winit-runtime-wayland"))]
 mod runtime;

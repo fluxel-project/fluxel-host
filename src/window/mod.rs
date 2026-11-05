@@ -120,6 +120,25 @@ pub struct WindowConfig {
     title: String,
     client_width: NonZeroU32,
     client_height: NonZeroU32,
+    visibility: WindowVisibility,
+}
+
+/// Presentation requested when a native window is created.
+///
+/// A [`Background`] window is shown without taking foreground activation where
+/// the native backend can provide that guarantee. [`Hidden`] lets a renderer
+/// create its surface and produce an initial frame before it explicitly calls
+/// `show_background` on the platform window.
+///
+/// [`Background`]: Self::Background
+/// [`Hidden`]: Self::Hidden
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum WindowVisibility {
+    /// Keep the newly-created window hidden until explicitly presented.
+    Hidden,
+    /// Show the newly-created window behind existing work without activation.
+    #[default]
+    Background,
 }
 
 impl WindowConfig {
@@ -139,7 +158,19 @@ impl WindowConfig {
             title,
             client_width,
             client_height,
+            visibility: WindowVisibility::Background,
         })
+    }
+
+    /// Selects the initial presentation policy.
+    ///
+    /// The default is [`WindowVisibility::Background`]. Use
+    /// [`WindowVisibility::Hidden`] when a consumer must finish setup or
+    /// render an initial frame before requesting background presentation.
+    #[must_use]
+    pub fn with_visibility(mut self, visibility: WindowVisibility) -> Self {
+        self.visibility = visibility;
+        self
     }
 
     /// Window title passed to the platform's creation API.
@@ -155,6 +186,11 @@ impl WindowConfig {
     /// Initial client-area height requested during creation.
     pub fn client_height(&self) -> NonZeroU32 {
         self.client_height
+    }
+
+    /// Requested presentation policy for the newly-created window.
+    pub fn visibility(&self) -> WindowVisibility {
+        self.visibility
     }
 }
 

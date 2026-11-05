@@ -1,7 +1,19 @@
+#[cfg(windows)]
+use core::ffi::c_void;
 use core::fmt;
 
+#[cfg(windows)]
+use raw_window_handle::RawWindowHandle;
 use raw_window_handle::{
     DisplayHandle, HandleError, HasDisplayHandle, HasWindowHandle, WindowHandle,
+};
+#[cfg(windows)]
+use windows::Win32::{
+    Foundation::HWND,
+    UI::WindowsAndMessaging::{
+        HWND_BOTTOM, IsWindowVisible, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SWP_SHOWWINDOW,
+        SetWindowPos,
+    },
 };
 use winit::{
     application::ApplicationHandler,
@@ -12,7 +24,7 @@ use winit::{
     window::{Window as WinitWindow, WindowAttributes, WindowId},
 };
 
-use crate::{Key, MouseButton, WindowConfig, WindowError, WindowEvent};
+use crate::{Key, MouseButton, WindowConfig, WindowError, WindowEvent, WindowVisibility};
 
 /// A native window created by [`HostContext`] while the platform permits it.
 ///
@@ -32,6 +44,56 @@ impl HostWindow {
     pub fn inner_size(&self) -> [u32; 2] {
         let size = self.inner.inner_size();
         [size.width, size.height]
+    }
+
+    /// Requests visible presentation after a hidden setup interval.
+    ///
+    /// On Windows this uses the native bottom-of-z-order, non-activating
+    /// transition. Other targets receive a best-effort visibility request;
+    /// winit does not expose the equivalent platform z-order operation.
+    pub fn show_background(&self) -> Result<(), WindowError> {
+        #[cfg(windows)]
+        return self.show_windows_background();
+
+        #[cfg(not(windows))]
+        {
+            self.inner.set_visible(true);
+            Ok(())
+        }
+    }
+
+    #[cfg(windows)]
+    fn show_windows_background(&self) -> Result<(), WindowError> {
+        let raw = self
+            .inner
+            .window_handle()
+            .map_err(|error| WindowError::Platform(error.to_string()))?
+            .as_raw();
+        let RawWindowHandle::Win32(handle) = raw else {
+            return Err(WindowError::Platform(
+                "winit returned a non-Win32 handle on Windows".to_owned(),
+            ));
+        };
+        let hwnd = HWND(handle.hwnd.get() as *mut c_void);
+        // Do not demote a window after a user has selected it. Only the first
+        // hidden-to-visible transition is owned by this policy.
+        if unsafe { IsWindowVisible(hwnd) }.as_bool() {
+            return Ok(());
+        }
+        // SAFETY: the winit-owned HWND remains valid for this borrow and this
+        // call is made on the event-loop thread that owns the window.
+        unsafe {
+            SetWindowPos(
+                hwnd,
+                Some(HWND_BOTTOM),
+                0,
+                0,
+                0,
+                0,
+                SWP_SHOWWINDOW | SWP_NOACTIVATE | SWP_NOMOVE | SWP_NOSIZE,
+            )
+        }
+        .map_err(|error| WindowError::Platform(error.to_string()))
     }
 }
 
@@ -79,13 +141,19 @@ impl<'a> HostContext<'a> {
                 .with_inner_size(PhysicalSize::new(
                     config.client_width().get(),
                     config.client_height().get(),
-                ));
+                ))
+                .with_visible(false)
+                .with_active(false);
             let window = self
                 .event_loop
                 .create_window(attributes)
                 .map_err(|error| WindowError::Platform(error.to_string()))?;
             window.set_ime_allowed(true);
-            *self.window = Some(HostWindow { inner: window });
+            let window = HostWindow { inner: window };
+            if config.visibility() == WindowVisibility::Background {
+                window.show_background()?;
+            }
+            *self.window = Some(window);
         }
         Ok(self.window.as_ref().expect("window was just created"))
     }
