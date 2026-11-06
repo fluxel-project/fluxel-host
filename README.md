@@ -69,11 +69,11 @@ presentation and independent Windows Graphics Capture without changing focus or
 z-order; the evidence oracle excludes only the two bottom 16x16 DWM decoration
 corners, never RHI readback pixels. It is not a GPU, Surface, scheduling, or
 renderer-ownership contract. The
-[S7 historical closure](https://github.com/fluxel-project/fluxel-rendering/blob/main/documents/s7-deferred-closure.md)
-and [S8 measured closure](https://github.com/fluxel-project/fluxel-rendering/blob/main/documents/s8-measured-closure.md)
+[S7 historical closure](https://github.com/fluxel-project/fluxel-rendering/blob/c24f9adf17cfd12ed2bc3035f45cd1f477879afc/documents/s7-deferred-closure.md)
+and [S8 measured closure](https://github.com/fluxel-project/fluxel-rendering/blob/c24f9adf17cfd12ed2bc3035f45cd1f477879afc/documents/s8-measured-closure.md)
 do not establish browser support.
 
-The subsequent [Rendering maintenance review](https://github.com/fluxel-project/fluxel-rendering/blob/main/documents/review-follow-up.md#current-maintenance-review)
+The subsequent [Rendering maintenance review](https://github.com/fluxel-project/fluxel-rendering/blob/c24f9adf17cfd12ed2bc3035f45cd1f477879afc/documents/review-follow-up.md#current-maintenance-review)
 adds private Graph and CPU/tooling checks without changing Host's selected
 revision, window lifecycle, or the source identity of those native archives.
 
