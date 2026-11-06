@@ -73,7 +73,7 @@ renderer-ownership contract. The
 and [S8 measured closure](https://github.com/fluxel-project/fluxel-rendering/blob/main/documents/s8-measured-closure.md)
 do not establish browser support.
 
-The subsequent [Rendering maintenance review](https://github.com/fluxel-project/fluxel-rendering/blob/main/documents/s0-s8-review-follow-up.md)
+The subsequent [Rendering maintenance review](https://github.com/fluxel-project/fluxel-rendering/blob/main/documents/review-follow-up.md#current-maintenance-review)
 adds private Graph and CPU/tooling checks without changing Host's selected
 revision, window lifecycle, or the source identity of those native archives.
 
